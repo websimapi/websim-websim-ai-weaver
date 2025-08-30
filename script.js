@@ -3,8 +3,9 @@ import { WebsimSocket } from 'websim';
 const consoleEl = document.getElementById('console');
 const renderTarget = document.getElementById('render-target');
 const triggerButton = document.getElementById('trigger-button');
+const spinner = document.getElementById('spinner');
 
-const COLLECTION_TYPE = 'ai_weaver_project_v1';
+const COLLECTION_TYPE = 'ai_weaver_project_v2'; // Bumped version for new merge logic
 let room;
 let currentCode = {
     html: '<!-- Welcome to the AI Weaver -->\n<div class="center"><h1>Waiting for first merge...</h1><p>The AI will begin its work shortly.</p></div>',
@@ -105,11 +106,9 @@ async function saveCurrentCode() {
     try {
         const records = room.collection(COLLECTION_TYPE).getList();
         if (records.length > 0) {
-            // Update existing record
-            const recordToUpdate = records[0]; // Assuming only one state record
+            const recordToUpdate = records[0];
             await room.collection(COLLECTION_TYPE).update(recordToUpdate.id, currentCode);
         } else {
-            // Create new record
             await room.collection(COLLECTION_TYPE).create(currentCode);
         }
         logToConsole("Save successful.", "save");
@@ -121,29 +120,22 @@ async function saveCurrentCode() {
 async function loadLatestCode() {
     logToConsole("Attempting to load latest project state...");
     return new Promise((resolve) => {
-        const unsubscribe = room.collection(COLLECTION_TYPE).subscribe(records => {
-            if (records.length > 0) {
-                // getList is newest to oldest, so records[0] is the latest
+        // Give the socket some time to connect and fetch initial data.
+        setTimeout(() => {
+            const records = room.collection(COLLECTION_TYPE).getList();
+            if (records && records.length > 0) {
                 const latestRecord = records[0];
                 currentCode = {
-                    html: latestRecord.html,
-                    css: latestRecord.css,
-                    js: latestRecord.js
+                    html: latestRecord.html || currentCode.html,
+                    css: latestRecord.css || currentCode.css,
+                    js: latestRecord.js || currentCode.js
                 };
-                logToConsole("Successfully loaded saved state.");
-                unsubscribe();
-                resolve(true);
+                logToConsole("Successfully loaded saved state from database.");
             } else {
-                logToConsole("No saved state found. Starting fresh.");
-                unsubscribe();
-                resolve(false);
+                logToConsole("No saved state found. Starting with initial template.");
             }
-        });
-        // Timeout if subscription takes too long
-        setTimeout(() => {
-            unsubscribe();
-            resolve(false);
-        }, 3000);
+            resolve(true);
+        }, 1500); // Wait 1.5s for records to populate
     });
 }
 
@@ -151,51 +143,111 @@ async function runAiMerge() {
     if (isMerging) return;
     isMerging = true;
     triggerButton.disabled = true;
-    triggerButton.textContent = 'Merging...';
+    triggerButton.textContent = 'AI is Weaving...';
+    spinner.classList.remove('hidden');
 
     try {
         logToConsole("AI cycle initiated...", "scan");
-
         await new Promise(res => setTimeout(res, 1000));
+        
         const randomProject = MOCK_PROJECTS[Math.floor(Math.random() * MOCK_PROJECTS.length)];
         logToConsole(`Found random project: '${randomProject.name}'`, "scan");
-
         await new Promise(res => setTimeout(res, 1500));
-        logToConsole("Fetching code modules...", "fetch");
+        
+        logToConsole("Engaging AI to merge code...", "merge");
 
-        await new Promise(res => setTimeout(res, 2000));
-        logToConsole("Merging new code with existing project...", "merge");
+        const systemPrompt = `You are an expert web developer AI. Your task is to merge two codebases (HTML, CSS, JS).
+Combine the 'new code' into the 'current code' in a creative and functional way.
+The goal is to create a single, coherent, and visually interesting webpage.
+- You can add, remove, or modify elements.
+- You can rewrite styles to make them compatible.
+- You can adjust scripts to work together, avoiding conflicts.
+- Be creative! The result should be a surprising and functional mashup.
 
-        // Simple merge strategy: append new content
-        currentCode.html += `\n<!-- Injected from ${randomProject.name} -->\n${randomProject.html}`;
-        currentCode.css += `\n/* Injected from ${randomProject.name} */\n${randomProject.css}`;
-        currentCode.js += `\n// Injected from ${randomProject.name}\ntry { (function() { ${randomProject.js} })(); } catch(e) { console.error('Error in injected script from ${randomProject.name}:', e); }`;
+Respond ONLY with a JSON object with 'html', 'css', and 'js' keys containing the new, merged code as strings.
+Do not include any other text, explanations, or markdown formatting.
+The JSON response should look like:
+{
+  "html": "...",
+  "css": "...",
+  "js": "..."
+}`;
+
+        const userPrompt = `Current Code:
+HTML:
+\`\`\`html
+${currentCode.html}
+\`\`\`
+CSS:
+\`\`\`css
+${currentCode.css}
+\`\`\`
+JS:
+\`\`\`javascript
+${currentCode.js}
+\`\`\`
+
+New Code to merge (from project '${randomProject.name}'):
+HTML:
+\`\`\`html
+${randomProject.html}
+\`\`\`
+CSS:
+\`\`\`css
+${randomProject.css}
+\`\`\`
+JS:
+\`\`\`javascript
+${randomProject.js}
+\`\`\`
+`;
+
+        const completion = await websim.chat.completions.create({
+            messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: [{ type: "text", text: userPrompt }] }
+            ],
+            json: true,
+        });
+
+        const result = JSON.parse(completion.content);
+        
+        currentCode = {
+            html: result.html,
+            css: result.css,
+            js: result.js
+        };
 
         renderCode(currentCode);
-        logToConsole("Render complete. New version is live.", "merge");
+        logToConsole("AI merge complete. New version is live.", "merge");
 
         await saveCurrentCode();
 
     } catch (e) {
         logToConsole(`An error occurred during the merge cycle: ${e.message}`, "error");
+        console.error(e);
     } finally {
         isMerging = false;
         triggerButton.disabled = false;
         triggerButton.textContent = 'Trigger Merge Now';
+        spinner.classList.add('hidden');
     }
 }
 
 async function init() {
     room = new WebsimSocket();
+    logToConsole("Websim socket connected.", "welcome");
+
     await loadLatestCode();
+    
     renderCode(currentCode);
+    logToConsole("Initial render complete.", "welcome");
     
     // Start the AI's periodic execution
-    setInterval(runAiMerge, 20000); // every 20 seconds
+    setInterval(runAiMerge, 30000); // every 30 seconds
     triggerButton.addEventListener('click', runAiMerge);
     
-    logToConsole("AI Weaver is active. Automatic merge in 20 seconds.", "welcome");
+    logToConsole("AI Weaver is active. Automatic merge in 30 seconds.", "welcome");
 }
 
 init();
-

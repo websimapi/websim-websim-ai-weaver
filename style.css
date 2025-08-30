@@ -93,8 +93,14 @@ h2 {
 .log-line.save { color: var(--foreground-color); opacity: 0.8; }
 
 
-#trigger-button {
+.button-container {
     margin-top: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+#trigger-button {
     padding: 0.75rem 1rem;
     background-color: var(--primary-color);
     color: var(--background-color);
@@ -103,16 +109,37 @@ h2 {
     font-family: 'Fira Code', monospace;
     font-size: 1rem;
     cursor: pointer;
-    transition: background-color 0.2s ease;
+    transition: background-color 0.2s ease, color 0.2s ease;
+    flex-grow: 1;
 }
 
-#trigger-button:hover {
+#trigger-button:hover:not(:disabled) {
     background-color: #9dacff;
 }
 
 #trigger-button:disabled {
     background-color: var(--border-color);
+    color: var(--foreground-color);
     cursor: not-allowed;
+}
+
+.spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid var(--border-color);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.hidden {
+    display: none;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 
@@ -137,4 +164,3 @@ h2 {
     height: 100%;
     border: none;
 }
-
