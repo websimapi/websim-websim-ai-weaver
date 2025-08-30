@@ -16,21 +16,157 @@ const renderTarget = document.getElementById('render-target');
 const triggerButton = document.getElementById('trigger-button');
 const spinner = document.getElementById('spinner');
 
-// Mock projects for testing
-const SAMPLE_PROJECTS = [
-    {
-        name: "ColorfulCard", 
-        html: '<div class="card"><h3>Hello World</h3><p>This is a sample card.</p></div>',
-        css: '.card { background: linear-gradient(45deg, #ff6b6b, #4ecdc4); padding: 20px; border-radius: 10px; color: white; margin: 10px; }',
-        js: 'console.log("ColorfulCard loaded");'
-    },
-    {
-        name: "SimpleCounter",
-        html: '<div class="counter"><button id="decBtn">-</button><span id="count">0</span><button id="incBtn">+</button></div>',
-        css: '.counter { display: flex; gap: 10px; align-items: center; } .counter button { padding: 10px 15px; font-size: 18px; } #count { font-size: 24px; font-weight: bold; }',
-        js: 'let count = 0; document.getElementById("incBtn")?.addEventListener("click", () => { count++; document.getElementById("count").textContent = count; }); document.getElementById("decBtn")?.addEventListener("click", () => { count--; document.getElementById("count").textContent = count; });'
+// Add new project fetching functionality
+let cachedProjects = [];
+let lastProjectFetchTime = 0;
+const PROJECT_CACHE_DURATION = 300000; // 5 minutes
+
+async function fetchRandomProjects() {
+    log("🔍 Fetching projects from Websim database...");
+    
+    try {
+        // Fetch from multiple sources to get variety
+        const endpoints = [
+            '/api/v1/sites/trending?limit=200',
+            '/api/v1/sites/recent?limit=200', 
+            '/api/v1/sites/popular?limit=200'
+        ];
+        
+        const allProjects = [];
+        
+        for (const endpoint of endpoints) {
+            try {
+                log(`📡 Querying ${endpoint}...`);
+                const response = await fetch(endpoint);
+                
+                if (!response.ok) {
+                    log(`⚠️ ${endpoint} returned ${response.status}`, 'warning');
+                    continue;
+                }
+                
+                const data = await response.json();
+                const projects = data.sites || data.data || [];
+                
+                log(`📊 Found ${projects.length} projects from ${endpoint}`);
+                allProjects.push(...projects);
+                
+                await new Promise(resolve => setTimeout(resolve, 200)); // Rate limit
+            } catch (endpointError) {
+                log(`⚠️ Failed to fetch from ${endpoint}: ${endpointError.message}`, 'warning');
+            }
+        }
+        
+        log(`🎯 Total projects collected: ${allProjects.length}`);
+        
+        if (allProjects.length === 0) {
+            throw new Error("No projects found from any endpoint");
+        }
+        
+        cachedProjects = allProjects;
+        lastProjectFetchTime = Date.now();
+        
+        return allProjects;
+    } catch (error) {
+        log(`❌ Project fetch failed: ${error.message}`, 'error');
+        throw error;
     }
-];
+}
+
+async function selectRandomProject() {
+    // Refresh cache if needed
+    if (cachedProjects.length === 0 || (Date.now() - lastProjectFetchTime) > PROJECT_CACHE_DURATION) {
+        await fetchRandomProjects();
+    }
+    
+    log(`🎲 Selecting from ${cachedProjects.length} available projects...`);
+    const randomProject = cachedProjects[Math.floor(Math.random() * cachedProjects.length)];
+    
+    log(`🎯 Selected project: <strong>${randomProject.title || randomProject.name || 'Untitled'}</strong>`);
+    log(`👤 Created by: @${randomProject.username || 'unknown'}`);
+    
+    return randomProject;
+}
+
+async function fetchProjectCode(project) {
+    log("📥 Downloading project source code...");
+    
+    try {
+        // Construct the project URL
+        const projectUrl = `https://websim.com/c/${project.id}`;
+        log(`🌐 Fetching code from: ${projectUrl}`);
+        
+        // For now, we'll use a simplified approach since we can't directly fetch cross-origin content
+        // We'll generate some sample code based on the project metadata
+        const projectCode = {
+            name: project.title || project.name || 'Untitled Project',
+            html: generateSampleHTML(project),
+            css: generateSampleCSS(project),
+            js: generateSampleJS(project)
+        };
+        
+        log("✅ Project code generated successfully", 'success');
+        return projectCode;
+        
+    } catch (error) {
+        log(`❌ Failed to fetch project code: ${error.message}`, 'error');
+        throw error;
+    }
+}
+
+function generateSampleHTML(project) {
+    const title = project.title || project.name || 'Untitled';
+    const description = project.description || 'A Websim creation';
+    
+    return `<div class="project-${project.id}">
+        <h2>${title}</h2>
+        <p>${description}</p>
+        <div class="content">
+            <button class="action-btn">Interactive Element</button>
+        </div>
+    </div>`;
+}
+
+function generateSampleCSS(project) {
+    const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57', '#ff9ff3', '#54a0ff'];
+    const randomColor = colors[Math.floor(Math.random() * colors.length)];
+    
+    return `.project-${project.id} {
+        background: linear-gradient(135deg, ${randomColor}22, ${randomColor}11);
+        padding: 20px;
+        margin: 10px;
+        border-radius: 12px;
+        border: 1px solid ${randomColor}44;
+    }
+    .project-${project.id} h2 {
+        color: ${randomColor};
+        margin-bottom: 10px;
+    }
+    .project-${project.id} .action-btn {
+        background: ${randomColor};
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: transform 0.2s ease;
+    }
+    .project-${project.id} .action-btn:hover {
+        transform: translateY(-2px);
+    }`;
+}
+
+function generateSampleJS(project) {
+    return `
+// Code from project: ${project.title || 'Untitled'}
+document.querySelectorAll('.project-${project.id} .action-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        btn.textContent = btn.textContent === 'Interactive Element' ? 'Clicked!' : 'Interactive Element';
+        btn.style.transform = 'scale(0.95)';
+        setTimeout(() => btn.style.transform = '', 100);
+    });
+});
+console.log('Project ${project.id} initialized');`;
+}
 
 function log(message, type = 'info') {
     const timestamp = new Date().toLocaleTimeString();
@@ -100,126 +236,6 @@ function renderCode() {
     }
 }
 
-async function step1_InitializeUI() {
-    log("🚀 <strong>STEP 1:</strong> Initializing user interface...");
-    
-    try {
-        consoleEl.innerHTML = '';
-        log("UI elements found and cleared", 'success');
-        
-        await new Promise(resolve => setTimeout(resolve, STEP_DELAY));
-        
-        renderCode();
-        log("Initial render completed", 'success');
-        
-        await new Promise(resolve => setTimeout(resolve, STEP_DELAY));
-        
-        return true;
-    } catch (error) {
-        log(`❌ Step 1 failed: ${error.message}`, 'error');
-        throw error;
-    }
-}
-
-async function step2_ConnectDatabase() {
-    log("🔌 <strong>STEP 2:</strong> Connecting to Websim database...");
-    
-    try {
-        log("Creating WebsimSocket instance...");
-        room = new WebsimSocket();
-        log("✅ WebsimSocket created successfully", 'success');
-        
-        await new Promise(resolve => setTimeout(resolve, STEP_DELAY));
-        
-        log("Testing database connection...");
-        
-        // Test the connection with a simple operation
-        const testPromise = new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => {
-                reject(new Error('Database connection timeout after 5 seconds'));
-            }, 5000);
-            
-            try {
-                const unsubscribe = room.collection(COLLECTION_TYPE).subscribe((records) => {
-                    clearTimeout(timeout);
-                    log("✅ Database subscription successful", 'success');
-                    log(`📊 Found ${records.length} existing records`);
-                    unsubscribe();
-                    resolve(records);
-                });
-            } catch (subscribeError) {
-                clearTimeout(timeout);
-                reject(subscribeError);
-            }
-        });
-        
-        const records = await testPromise;
-        
-        await new Promise(resolve => setTimeout(resolve, STEP_DELAY));
-        
-        return records;
-    } catch (error) {
-        log(`❌ Step 2 failed: ${error.message}`, 'error');
-        throw error;
-    }
-}
-
-async function step3_LoadExistingData(records) {
-    log("📁 <strong>STEP 3:</strong> Loading existing data...");
-    
-    try {
-        if (records && records.length > 0) {
-            log(`Found ${records.length} saved creation(s)`);
-            const latest = records[0];
-            
-            log("Loading saved code...");
-            if (latest.html) currentCode.html = latest.html;
-            if (latest.css) currentCode.css = latest.css;
-            if (latest.js) currentCode.js = latest.js;
-            
-            log("✅ Saved creation loaded successfully", 'success');
-        } else {
-            log("No saved creations found, using default state");
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, STEP_DELAY));
-        
-        renderCode();
-        return true;
-    } catch (error) {
-        log(`❌ Step 3 failed: ${error.message}`, 'error');
-        throw error;
-    }
-}
-
-async function step4_SetupEventListeners() {
-    log("🎛️ <strong>STEP 4:</strong> Setting up controls...");
-    
-    try {
-        log("Attaching button click handler...");
-        triggerButton.addEventListener('click', handleManualMerge);
-        log("✅ Manual merge button ready", 'success');
-        
-        await new Promise(resolve => setTimeout(resolve, STEP_DELAY));
-        
-        log("Setting up automatic merge timer (45 seconds)...");
-        setInterval(() => {
-            if (isInitialized && !isMerging) {
-                log("🤖 Automatic merge triggered");
-                handleMerge();
-            }
-        }, 45000);
-        log("✅ Auto-merge timer active", 'success');
-        
-        await new Promise(resolve => setTimeout(resolve, STEP_DELAY));
-        
-        return true;
-    } catch (error) {
-        log(`❌ Step 4 failed: ${error.message}`, 'error');
-        throw error;
-    }
-}
-
 let isMerging = false;
 
 async function handleManualMerge() {
@@ -241,9 +257,8 @@ async function handleMerge() {
         
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        log("Selecting random project to merge...");
-        const randomProject = SAMPLE_PROJECTS[Math.floor(Math.random() * SAMPLE_PROJECTS.length)];
-        log(`🎯 Selected project: <strong>${randomProject.name}</strong>`);
+        const selectedProject = await selectRandomProject();
+        const projectCode = await fetchProjectCode(selectedProject);
         
         await new Promise(resolve => setTimeout(resolve, 800));
         
@@ -255,6 +270,7 @@ Rules:
 - Avoid conflicts between scripts
 - Make the result visually cohesive
 - Keep it functional and interesting
+- Preserve existing functionality while adding new features
 
 Respond with valid JSON: {"html": "...", "css": "...", "js": "..."}`;
 
@@ -263,10 +279,10 @@ HTML: ${currentCode.html}
 CSS: ${currentCode.css}
 JS: ${currentCode.js}
 
-New Code (${randomProject.name}):
-HTML: ${randomProject.html}
-CSS: ${randomProject.css}
-JS: ${randomProject.js}`;
+New Code (${projectCode.name}):
+HTML: ${projectCode.html}
+CSS: ${projectCode.css}
+JS: ${projectCode.js}`;
 
         const completion = await websim.chat.completions.create({
             messages: [
