@@ -91,11 +91,11 @@ function renderCode(code) {
         <!DOCTYPE html>
         <html>
             <head>
-                <style>${code.css}</style>
+                <style>${code.css || ''}</style>
             </head>
             <body>
-                ${code.html}
-                <script>${code.js}<\/script>
+                ${code.html || ''}
+                <script>${code.js || ''}<\/script>
             </body>
         </html>
     `;
@@ -115,38 +115,51 @@ async function saveCurrentCode() {
         logToConsole("Save successful.", "save");
     } catch (error) {
         logToConsole(`Error saving state: ${error.message}`, "error");
+        console.error("Save Error:", error);
     }
 }
 
 function handleStateUpdate(records) {
     if (isInitialized) return; // Only run initialization once
 
-    logToConsole("Connection established. Checking for saved project...");
+    logToConsole("Connection established. Received project data.", "welcome");
 
-    if (records && records.length > 0) {
-        const latestRecord = records[0];
-        currentCode = {
-            html: latestRecord.html || currentCode.html,
-            css: latestRecord.css || currentCode.css,
-            js: latestRecord.js || currentCode.js
-        };
-        logToConsole("Found a saved creation. Rendering now.", "welcome");
-    } else {
-        logToConsole("No saved creation found. Starting with a blank canvas.", "welcome");
+    try {
+        if (records && records.length > 0) {
+            logToConsole("Found a saved creation. Loading data...", "welcome");
+            const latestRecord = records[0];
+            currentCode = {
+                html: latestRecord.html || currentCode.html,
+                css: latestRecord.css || currentCode.css,
+                js: latestRecord.js || currentCode.js
+            };
+            logToConsole("Data loaded successfully. Rendering now.", "welcome");
+        } else {
+            logToConsole("No saved creation found. Starting with a blank canvas.", "welcome");
+        }
+        
+        renderCode(currentCode);
+        
+        logToConsole("AI Weaver is ready.", "ready");
+        logToConsole("Click 'Trigger Merge Now' or wait for the automatic cycle.", "welcome");
+
+        isInitialized = true;
+        triggerButton.disabled = false;
+        triggerButton.textContent = 'Trigger Merge Now';
+        spinner.classList.add('hidden');
+
+    } catch (error) {
+        logToConsole(`Error processing initial state: ${error.message}`, "error");
+        console.error("State Update Error:", error);
+        triggerButton.textContent = "Error!";
     }
-    
-    renderCode(currentCode);
-    
-    logToConsole("AI Weaver is ready.", "ready");
-    logToConsole("Click 'Trigger Merge Now' or wait for the automatic cycle.", "welcome");
-
-    isInitialized = true;
-    triggerButton.disabled = false;
-    triggerButton.textContent = 'Trigger Merge Now';
 }
 
 async function runAiMerge() {
-    if (isMerging) return;
+    if (isMerging) {
+        logToConsole("Merge already in progress.", "scan");
+        return;
+    }
     isMerging = true;
     triggerButton.disabled = true;
     triggerButton.textContent = 'AI is Weaving...';
@@ -221,7 +234,7 @@ ${randomProject.js}
             json: true,
         });
 
-        const resultText = completion.content.trim().replace(/^```json|```$/g, '');
+        const resultText = completion.content.trim();
         const result = JSON.parse(resultText);
         
         if (!result.html || !result.css || !result.js) {
@@ -241,27 +254,56 @@ ${randomProject.js}
 
     } catch (e) {
         logToConsole(`An error occurred during the merge cycle: ${e.message}`, "error");
-        console.error(e);
+        console.error("Merge Error:", e);
     } finally {
         isMerging = false;
-        triggerButton.disabled = false;
-        triggerButton.textContent = 'Trigger Merge Now';
-        spinner.classList.add('hidden');
+        if (isInitialized) {
+            triggerButton.disabled = false;
+            triggerButton.textContent = 'Trigger Merge Now';
+            spinner.classList.add('hidden');
+        }
     }
 }
 
 async function init() {
-    consoleEl.innerHTML = ''; // Clear initial HTML content
-    logToConsole("Initializing AI Weaver instance...", "welcome");
-    logToConsole("Connecting to Websim...", "welcome");
+    try {
+        consoleEl.innerHTML = ''; // Clear initial HTML content
+        logToConsole("<strong>Step 1:</strong> Initializing AI Weaver instance...", "welcome");
 
-    room = new WebsimSocket();
-    
-    room.collection(COLLECTION_TYPE).subscribe(handleStateUpdate);
-    
-    // Start the AI's periodic execution
-    setInterval(runAiMerge, 45000); // every 45 seconds
-    triggerButton.addEventListener('click', runAiMerge);
+        logToConsole("<strong>Step 2:</strong> Connecting to Websim backend...", "welcome");
+        await new Promise(res => setTimeout(res, 200)); 
+
+        logToConsole("<strong>Step 3:</strong> Creating WebsimSocket room...", "welcome");
+        room = new WebsimSocket();
+        logToConsole("... WebsimSocket room created.", "welcome");
+        await new Promise(res => setTimeout(res, 200));
+
+        const initTimeout = setTimeout(() => {
+            if (!isInitialized) {
+                logToConsole("Initialization timed out. The connection to Websim might be slow or blocked. Please refresh and try again.", "error");
+                triggerButton.textContent = "Initialization Failed";
+                spinner.classList.add('hidden');
+            }
+        }, 15000); // 15-second timeout
+
+        logToConsole("<strong>Step 4:</strong> Subscribing to project data collection...", "welcome");
+        room.collection(COLLECTION_TYPE).subscribe((records) => {
+            clearTimeout(initTimeout); // Success, so clear the timeout
+            handleStateUpdate(records);
+        });
+        logToConsole("... Subscription request sent. Waiting for data.", "welcome");
+
+        // Set up interval and button listener
+        setInterval(runAiMerge, 45000); // every 45 seconds
+        triggerButton.addEventListener('click', runAiMerge);
+
+    } catch (error) {
+        logToConsole(`A critical error occurred during initialization: ${error.message}`, "error");
+        console.error("Initialization error:", error);
+        triggerButton.textContent = "Error!";
+        triggerButton.disabled = true;
+        spinner.classList.add('hidden');
+    }
 }
 
 init();

@@ -134,7 +134,7 @@ h2 {
     animation: spin 1s linear infinite;
 }
 
-.hidden {
+.spinner.hidden {
     display: none;
 }
 
