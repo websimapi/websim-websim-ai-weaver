@@ -1,0 +1,140 @@
+:root {
+    --background-color: #1a1b26;
+    --foreground-color: #a9b1d6;
+    --primary-color: #7aa2f7;
+    --secondary-color: #bb9af7;
+    --green: #9ece6a;
+    --yellow: #e0af68;
+    --red: #f7768e;
+    --border-color: #414868;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Fira Code', monospace;
+    background-color: var(--background-color);
+    color: var(--foreground-color);
+    line-height: 1.6;
+    padding: 1rem;
+}
+
+#app {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+header {
+    text-align: center;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 1rem;
+}
+
+header h1 {
+    color: var(--primary-color);
+    margin-bottom: 0.5rem;
+}
+
+main {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+    main {
+        grid-template-columns: 1fr 2fr;
+    }
+}
+
+h2 {
+    color: var(--secondary-color);
+    margin-bottom: 1rem;
+    font-weight: 500;
+}
+
+#console-container {
+    background-color: #1f2335;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+}
+
+#console {
+    flex-grow: 1;
+    background-color: var(--background-color);
+    padding: 0.75rem;
+    border-radius: 4px;
+    overflow-y: auto;
+    height: 300px;
+    font-size: 0.85rem;
+    border: 1px solid var(--border-color);
+}
+
+.log-line {
+    margin-bottom: 0.5em;
+    word-break: break-word;
+}
+
+.log-line.welcome { color: var(--secondary-color); }
+.log-line.scan { color: var(--yellow); }
+.log-line.fetch { color: var(--primary-color); }
+.log-line.merge { color: var(--green); }
+.log-line.error { color: var(--red); }
+.log-line.save { color: var(--foreground-color); opacity: 0.8; }
+
+
+#trigger-button {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    background-color: var(--primary-color);
+    color: var(--background-color);
+    border: none;
+    border-radius: 4px;
+    font-family: 'Fira Code', monospace;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+#trigger-button:hover {
+    background-color: #9dacff;
+}
+
+#trigger-button:disabled {
+    background-color: var(--border-color);
+    cursor: not-allowed;
+}
+
+
+#render-container {
+    background-color: #1f2335;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.iframe-wrapper {
+    flex-grow: 1;
+    background-color: white;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+#render-target {
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+

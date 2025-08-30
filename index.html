@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Websim AI Weaver</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300..700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>Websim AI Weaver</h1>
+            <p>An AI periodically merges code from random projects across Websim.</p>
+        </header>
+
+        <main>
+            <div id="console-container">
+                <h2>AI Status Log</h2>
+                <div id="console">
+                    <p class="log-line welcome">[SYSTEM] Initializing AI Weaver instance...</p>
+                </div>
+                <button id="trigger-button">Trigger Merge Now</button>
+            </div>
+            <div id="render-container">
+                <h2>Live Render</h2>
+                <div class="iframe-wrapper">
+                    <iframe id="render-target" sandbox="allow-scripts allow-same-origin"></iframe>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script type="importmap">
+        {
+            "imports": {
+                "websim": "/websim/websim-socket.js"
+            }
+        }
+    </script>
+    <script type="module" src="script.js"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
+
