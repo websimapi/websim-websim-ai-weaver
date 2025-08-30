@@ -7,7 +7,7 @@ const spinner = document.getElementById('spinner');
 
 const COLLECTION_TYPE = 'ai_weaver_project_v2'; // Bumped version for new merge logic
 let room;
-let isInitialized = false;
+let initialDataLoaded = false;
 let currentCode = {
     html: '<!-- Welcome to the AI Weaver -->\n<div class="center"><h1>Waiting for first merge...</h1><p>The AI will begin its work shortly.</p></div>',
     css: 'body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #f0f0f0; } .center { text-align: center; color: #555; }',
@@ -120,38 +120,32 @@ async function saveCurrentCode() {
 }
 
 function handleStateUpdate(records) {
-    if (isInitialized) return; // Only run initialization once
+    if (initialDataLoaded) return; // Only process the first data load
 
-    logToConsole("Connection established. Received project data.", "welcome");
+    logToConsole("<strong>Step 3:</strong> Received data from Websim.", "welcome");
 
     try {
         if (records && records.length > 0) {
-            logToConsole("Found a saved creation. Loading data...", "welcome");
+            logToConsole("... Found a saved creation. Loading data.", "welcome");
             const latestRecord = records[0];
             currentCode = {
                 html: latestRecord.html || currentCode.html,
                 css: latestRecord.css || currentCode.css,
                 js: latestRecord.js || currentCode.js
             };
-            logToConsole("Data loaded successfully. Rendering now.", "welcome");
+            renderCode(currentCode);
+            logToConsole("... Saved creation has been loaded and rendered.", "welcome");
         } else {
-            logToConsole("No saved creation found. Starting with a blank canvas.", "welcome");
+            logToConsole("... No saved creation found. Using default state.", "welcome");
         }
         
-        renderCode(currentCode);
+        logToConsole("<strong>Initialization complete.</strong> AI Weaver is ready.", "ready");
         
-        logToConsole("AI Weaver is ready.", "ready");
-        logToConsole("Click 'Trigger Merge Now' or wait for the automatic cycle.", "welcome");
-
-        isInitialized = true;
-        triggerButton.disabled = false;
-        triggerButton.textContent = 'Trigger Merge Now';
-        spinner.classList.add('hidden');
-
     } catch (error) {
         logToConsole(`Error processing initial state: ${error.message}`, "error");
         console.error("State Update Error:", error);
-        triggerButton.textContent = "Error!";
+    } finally {
+        initialDataLoaded = true;
     }
 }
 
@@ -257,44 +251,40 @@ ${randomProject.js}
         console.error("Merge Error:", e);
     } finally {
         isMerging = false;
-        if (isInitialized) {
-            triggerButton.disabled = false;
-            triggerButton.textContent = 'Trigger Merge Now';
-            spinner.classList.add('hidden');
-        }
+        triggerButton.disabled = false;
+        triggerButton.textContent = 'Trigger Merge Now';
+        spinner.classList.add('hidden');
     }
 }
 
 async function init() {
     try {
         consoleEl.innerHTML = ''; // Clear initial HTML content
-        logToConsole("<strong>Step 1:</strong> Initializing AI Weaver instance...", "welcome");
+        logToConsole("<strong>Step 1:</strong> Initializing UI with default state.", "welcome");
+        renderCode(currentCode);
+        
+        triggerButton.disabled = false;
+        triggerButton.textContent = 'Trigger Merge Now';
 
-        logToConsole("<strong>Step 2:</strong> Connecting to Websim backend...", "welcome");
-        await new Promise(res => setTimeout(res, 200)); 
+        await new Promise(res => setTimeout(res, 500));
 
-        logToConsole("<strong>Step 3:</strong> Creating WebsimSocket room...", "welcome");
+        logToConsole("<strong>Step 2:</strong> Connecting to Websim database...", "welcome");
         room = new WebsimSocket();
-        logToConsole("... WebsimSocket room created.", "welcome");
-        await new Promise(res => setTimeout(res, 200));
-
+        
         const initTimeout = setTimeout(() => {
-            if (!isInitialized) {
-                logToConsole("Initialization timed out. The connection to Websim might be slow or blocked. Please refresh and try again.", "error");
-                triggerButton.textContent = "Initialization Failed";
-                spinner.classList.add('hidden');
+            if (!initialDataLoaded) {
+                logToConsole("Warning: Connection to Websim is slow. A saved creation might take longer to appear.", "error");
+                logToConsole("You can still use 'Trigger Merge Now'.", "welcome");
             }
-        }, 15000); // 15-second timeout
+        }, 10000); // 10-second warning timeout
 
-        logToConsole("<strong>Step 4:</strong> Subscribing to project data collection...", "welcome");
         room.collection(COLLECTION_TYPE).subscribe((records) => {
-            clearTimeout(initTimeout); // Success, so clear the timeout
+            clearTimeout(initTimeout);
             handleStateUpdate(records);
         });
-        logToConsole("... Subscription request sent. Waiting for data.", "welcome");
+        logToConsole("... Subscribed to data. Waiting for response.", "welcome");
 
-        // Set up interval and button listener
-        setInterval(runAiMerge, 45000); // every 45 seconds
+        setInterval(runAiMerge, 45000);
         triggerButton.addEventListener('click', runAiMerge);
 
     } catch (error) {
