@@ -371,6 +371,66 @@ async function initializeApp() {
     }
 }
 
+async function step1_InitializeUI() {
+    log("🎨 Step 1: Initializing UI components...");
+    await new Promise(resolve => setTimeout(resolve, STEP_DELAY));
+    
+    // Render initial code
+    renderCode();
+    log("✅ UI initialized successfully", 'success');
+}
+
+async function step2_ConnectDatabase() {
+    log("🔌 Step 2: Connecting to WebsimSocket database...");
+    await new Promise(resolve => setTimeout(resolve, STEP_DELAY));
+    
+    try {
+        room = new WebsimSocket();
+        log("✅ Database connection established", 'success');
+        
+        const records = room.collection(COLLECTION_TYPE).getList();
+        log(`📊 Found ${records.length} existing records`);
+        
+        return records;
+    } catch (error) {
+        log(`❌ Database connection failed: ${error.message}`, 'error');
+        throw error;
+    }
+}
+
+async function step3_LoadExistingData(records) {
+    log("📂 Step 3: Loading existing data...");
+    await new Promise(resolve => setTimeout(resolve, STEP_DELAY));
+    
+    if (records && records.length > 0) {
+        const latestRecord = records[0];
+        log(`🔄 Loading saved creation from ${new Date(latestRecord.created_at).toLocaleString()}`);
+        
+        if (latestRecord.html && latestRecord.css && latestRecord.js) {
+            currentCode = {
+                html: latestRecord.html,
+                css: latestRecord.css,
+                js: latestRecord.js
+            };
+            renderCode();
+            log("✅ Existing data loaded successfully", 'success');
+        } else {
+            log("⚠️ Existing record incomplete, using defaults", 'warning');
+        }
+    } else {
+        log("📝 No existing data found, starting fresh");
+    }
+}
+
+async function step4_SetupEventListeners() {
+    log("🎛️ Step 4: Setting up event listeners...");
+    await new Promise(resolve => setTimeout(resolve, STEP_DELAY));
+    
+    triggerButton.addEventListener('click', handleManualMerge);
+    
+    log("✅ Event listeners configured", 'success');
+}
+
 // Start the app
 log("Starting AI Weaver application...");
 initializeApp();
