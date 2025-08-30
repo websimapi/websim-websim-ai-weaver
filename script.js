@@ -1,224 +1,272 @@
-import { WebsimSocket } from 'websim';
+// Global state
+let room = null;
+let isInitialized = false;
+let currentCode = {
+    html: '<div class="welcome"><h1>AI Weaver Starting...</h1><p>Please wait while we initialize.</p></div>',
+    css: 'body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5; } .welcome { text-align: center; color: #333; }',
+    js: '// Initial state'
+};
 
+const COLLECTION_TYPE = 'ai_weaver_v3';
+const STEP_DELAY = 800; // Delay between steps for visibility
+
+// DOM elements
 const consoleEl = document.getElementById('console');
 const renderTarget = document.getElementById('render-target');
 const triggerButton = document.getElementById('trigger-button');
 const spinner = document.getElementById('spinner');
 
-const COLLECTION_TYPE = 'ai_weaver_project_v2'; // Bumped version for new merge logic
-let room;
-let initialDataLoaded = false;
-let currentCode = {
-    html: '<!-- Welcome to the AI Weaver -->\n<div class="center"><h1>Waiting for first merge...</h1><p>The AI will begin its work shortly.</p></div>',
-    css: 'body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #f0f0f0; } .center { text-align: center; color: #555; }',
-    js: 'console.log("Initial state loaded.");'
-};
-let isMerging = false;
-
-const MOCK_PROJECTS = [
+// Mock projects for testing
+const SAMPLE_PROJECTS = [
     {
-        name: "CosmicChat",
-        html: `<div class="chat-container">
-                    <div class="messages">
-                        <div class="msg user">Hello!</div>
-                        <div class="msg bot">Hi there, human!</div>
-                    </div>
-                    <input type="text" placeholder="Type something..." />
-               </div>`,
-        css: `
-                .chat-container { background: #2c3e50; padding: 20px; border-radius: 10px; color: white; font-family: monospace; }
-                .messages { margin-bottom: 10px; }
-                .msg { padding: 8px 12px; border-radius: 15px; margin-bottom: 5px; max-width: 70%; }
-                .user { background: #3498db; align-self: flex-end; margin-left: auto; }
-                .bot { background: #95a5a6; }
-                input { width: 95%; padding: 10px; border: none; border-radius: 5px; background: #ecf0f1; }`,
-        js: `console.log("CosmicChat module loaded.");
-               const input = document.querySelector('input');
-               input.addEventListener('keypress', (e) => { if(e.key === 'Enter') { alert("You sent: " + e.target.value); e.target.value = ''; } });`
+        name: "ColorfulCard", 
+        html: '<div class="card"><h3>Hello World</h3><p>This is a sample card.</p></div>',
+        css: '.card { background: linear-gradient(45deg, #ff6b6b, #4ecdc4); padding: 20px; border-radius: 10px; color: white; margin: 10px; }',
+        js: 'console.log("ColorfulCard loaded");'
     },
     {
-        name: "RetroPlayer",
-        html: `<div class="player">
-                    <div class="display">TRACK 01</div>
-                    <div class="controls">
-                        <button>◀◀</button><button>▶</button><button>▶▶</button>
-                    </div>
-               </div>`,
-        css: `
-                .player { border: 2px solid orange; padding: 15px; background: #333; text-align: center; }
-                .display { background: black; color: lime; padding: 10px; margin-bottom: 10px; font-weight: bold; }
-                .controls button { background: orange; border: none; padding: 10px; font-size: 1.2em; cursor: pointer; }`,
-        js: `const buttons = document.querySelectorAll('.controls button');
-               buttons.forEach(b => b.addEventListener('click', () => {
-                   document.querySelector('.display').textContent = 'BUTTON CLICKED';
-                   setTimeout(() => document.querySelector('.display').textContent = 'TRACK 01', 1000);
-               }));`
-    },
-    {
-        name: "DataVisualizer",
-        html: `<div class="viz">
-                 <div class="bar" style="height: 50%;"></div>
-                 <div class="bar" style="height: 80%;"></div>
-                 <div class="bar" style="height: 30%;"></div>
-               </div>`,
-        css: `
-                .viz { display: flex; justify-content: space-around; align-items: flex-end; height: 150px; border: 1px solid #eee; padding: 10px; }
-                .bar { width: 25%; background: linear-gradient(to top, #ff8c00, #ff0080); transition: height 0.5s ease; }`,
-        js: `setInterval(() => {
-                document.querySelectorAll('.bar').forEach(bar => {
-                    bar.style.height = Math.random() * 100 + '%';
-                });
-            }, 2000);`
-    },
-    {
-        name: "SimpleTodo",
-        html: `<ul><li>Buy milk</li><li>Learn quantum physics</li></ul>`,
-        css: `ul { list-style: square; padding-left: 20px; color: #4a4a4a; } li { background: #efefef; margin: 4px 0; padding: 5px; }`,
-        js: `document.querySelectorAll('li').forEach(item => item.addEventListener('click', () => item.style.textDecoration = 'line-through'));`
+        name: "SimpleCounter",
+        html: '<div class="counter"><button id="decBtn">-</button><span id="count">0</span><button id="incBtn">+</button></div>',
+        css: '.counter { display: flex; gap: 10px; align-items: center; } .counter button { padding: 10px 15px; font-size: 18px; } #count { font-size: 24px; font-weight: bold; }',
+        js: 'let count = 0; document.getElementById("incBtn")?.addEventListener("click", () => { count++; document.getElementById("count").textContent = count; }); document.getElementById("decBtn")?.addEventListener("click", () => { count--; document.getElementById("count").textContent = count; });'
     }
 ];
 
-function logToConsole(message, className = '') {
-    const p = document.createElement('p');
-    p.innerHTML = `[<span class="timestamp">${new Date().toLocaleTimeString()}</span>] ${message}`;
-    p.className = `log-line ${className}`;
-    consoleEl.appendChild(p);
+function log(message, type = 'info') {
+    const timestamp = new Date().toLocaleTimeString();
+    const typeClass = type === 'error' ? 'error' : type === 'success' ? 'merge' : type === 'warning' ? 'scan' : 'welcome';
+    
+    const logEntry = document.createElement('div');
+    logEntry.className = `log-line ${typeClass}`;
+    logEntry.innerHTML = `[${timestamp}] ${message}`;
+    
+    consoleEl.appendChild(logEntry);
     consoleEl.scrollTop = consoleEl.scrollHeight;
+    
+    // Also log to browser console for debugging
+    console.log(`[AI Weaver] ${message}`);
 }
 
-function renderCode(code) {
-    const content = `
-        <!DOCTYPE html>
-        <html>
-            <head>
-                <style>${code.css || ''}</style>
-            </head>
-            <body>
-                ${code.html || ''}
-                <script>${code.js || ''}<\/script>
-            </body>
-        </html>
-    `;
-    renderTarget.srcdoc = content;
-}
-
-async function saveCurrentCode() {
-    logToConsole("Saving current creation to database...", "save");
-    try {
-        const records = room.collection(COLLECTION_TYPE).getList();
-        if (records.length > 0) {
-            const recordToUpdate = records[0];
-            await room.collection(COLLECTION_TYPE).update(recordToUpdate.id, currentCode);
-        } else {
-            await room.collection(COLLECTION_TYPE).create(currentCode);
-        }
-        logToConsole("Save successful.", "save");
-    } catch (error) {
-        logToConsole(`Error saving state: ${error.message}`, "error");
-        console.error("Save Error:", error);
+function updateUI(state) {
+    switch(state) {
+        case 'initializing':
+            triggerButton.disabled = true;
+            triggerButton.textContent = 'Initializing...';
+            spinner.classList.remove('hidden');
+            break;
+        case 'ready':
+            triggerButton.disabled = false;
+            triggerButton.textContent = 'Trigger AI Merge';
+            spinner.classList.add('hidden');
+            break;
+        case 'merging':
+            triggerButton.disabled = true;
+            triggerButton.textContent = 'AI is Merging...';
+            spinner.classList.remove('hidden');
+            break;
+        case 'error':
+            triggerButton.disabled = false;
+            triggerButton.textContent = 'Try Again';
+            spinner.classList.add('hidden');
+            break;
     }
 }
 
-function handleStateUpdate(records) {
-    if (initialDataLoaded) return; // Only process the first data load
+function renderCode() {
+    try {
+        const content = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>${currentCode.css}</style>
+</head>
+<body>
+    ${currentCode.html}
+    <script>
+        try {
+            ${currentCode.js}
+        } catch(e) {
+            console.error('Render error:', e);
+        }
+    </script>
+</body>
+</html>`;
+        
+        renderTarget.srcdoc = content;
+        log("✅ Code rendered successfully", 'success');
+    } catch (error) {
+        log(`❌ Render error: ${error.message}`, 'error');
+    }
+}
 
-    logToConsole("<strong>Step 3:</strong> Received data from Websim.", "welcome");
+async function step1_InitializeUI() {
+    log("🚀 <strong>STEP 1:</strong> Initializing user interface...");
+    
+    try {
+        consoleEl.innerHTML = '';
+        log("UI elements found and cleared", 'success');
+        
+        await new Promise(resolve => setTimeout(resolve, STEP_DELAY));
+        
+        renderCode();
+        log("Initial render completed", 'success');
+        
+        await new Promise(resolve => setTimeout(resolve, STEP_DELAY));
+        
+        return true;
+    } catch (error) {
+        log(`❌ Step 1 failed: ${error.message}`, 'error');
+        throw error;
+    }
+}
 
+async function step2_ConnectDatabase() {
+    log("🔌 <strong>STEP 2:</strong> Connecting to Websim database...");
+    
+    try {
+        log("Creating WebsimSocket instance...");
+        room = new WebsimSocket();
+        log("✅ WebsimSocket created successfully", 'success');
+        
+        await new Promise(resolve => setTimeout(resolve, STEP_DELAY));
+        
+        log("Testing database connection...");
+        
+        // Test the connection with a simple operation
+        const testPromise = new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                reject(new Error('Database connection timeout after 5 seconds'));
+            }, 5000);
+            
+            try {
+                const unsubscribe = room.collection(COLLECTION_TYPE).subscribe((records) => {
+                    clearTimeout(timeout);
+                    log("✅ Database subscription successful", 'success');
+                    log(`📊 Found ${records.length} existing records`);
+                    unsubscribe();
+                    resolve(records);
+                });
+            } catch (subscribeError) {
+                clearTimeout(timeout);
+                reject(subscribeError);
+            }
+        });
+        
+        const records = await testPromise;
+        
+        await new Promise(resolve => setTimeout(resolve, STEP_DELAY));
+        
+        return records;
+    } catch (error) {
+        log(`❌ Step 2 failed: ${error.message}`, 'error');
+        throw error;
+    }
+}
+
+async function step3_LoadExistingData(records) {
+    log("📁 <strong>STEP 3:</strong> Loading existing data...");
+    
     try {
         if (records && records.length > 0) {
-            logToConsole("... Found a saved creation. Loading data.", "welcome");
-            const latestRecord = records[0];
-            currentCode = {
-                html: latestRecord.html || currentCode.html,
-                css: latestRecord.css || currentCode.css,
-                js: latestRecord.js || currentCode.js
-            };
-            renderCode(currentCode);
-            logToConsole("... Saved creation has been loaded and rendered.", "welcome");
+            log(`Found ${records.length} saved creation(s)`);
+            const latest = records[0];
+            
+            log("Loading saved code...");
+            if (latest.html) currentCode.html = latest.html;
+            if (latest.css) currentCode.css = latest.css;
+            if (latest.js) currentCode.js = latest.js;
+            
+            log("✅ Saved creation loaded successfully", 'success');
         } else {
-            logToConsole("... No saved creation found. Using default state.", "welcome");
+            log("No saved creations found, using default state");
         }
         
-        logToConsole("<strong>Initialization complete.</strong> AI Weaver is ready.", "ready");
+        await new Promise(resolve => setTimeout(resolve, STEP_DELAY));
         
+        renderCode();
+        return true;
     } catch (error) {
-        logToConsole(`Error processing initial state: ${error.message}`, "error");
-        console.error("State Update Error:", error);
-    } finally {
-        initialDataLoaded = true;
+        log(`❌ Step 3 failed: ${error.message}`, 'error');
+        throw error;
     }
 }
 
-async function runAiMerge() {
+async function step4_SetupEventListeners() {
+    log("🎛️ <strong>STEP 4:</strong> Setting up controls...");
+    
+    try {
+        log("Attaching button click handler...");
+        triggerButton.addEventListener('click', handleManualMerge);
+        log("✅ Manual merge button ready", 'success');
+        
+        await new Promise(resolve => setTimeout(resolve, STEP_DELAY));
+        
+        log("Setting up automatic merge timer (45 seconds)...");
+        setInterval(() => {
+            if (isInitialized && !isMerging) {
+                log("🤖 Automatic merge triggered");
+                handleMerge();
+            }
+        }, 45000);
+        log("✅ Auto-merge timer active", 'success');
+        
+        await new Promise(resolve => setTimeout(resolve, STEP_DELAY));
+        
+        return true;
+    } catch (error) {
+        log(`❌ Step 4 failed: ${error.message}`, 'error');
+        throw error;
+    }
+}
+
+let isMerging = false;
+
+async function handleManualMerge() {
+    log("👆 Manual merge requested by user");
+    await handleMerge();
+}
+
+async function handleMerge() {
     if (isMerging) {
-        logToConsole("Merge already in progress.", "scan");
+        log("⚠️ Merge already in progress, skipping", 'warning');
         return;
     }
+    
     isMerging = true;
-    triggerButton.disabled = true;
-    triggerButton.textContent = 'AI is Weaving...';
-    spinner.classList.remove('hidden');
-
+    updateUI('merging');
+    
     try {
-        logToConsole("AI cycle initiated...", "scan");
-        await new Promise(res => setTimeout(res, 500));
-
-        logToConsole("Searching Websim for a project to merge...", "scan");
-        await new Promise(res => setTimeout(res, 1500));
+        log("🔍 <strong>MERGE CYCLE STARTED</strong>");
         
-        const randomProject = MOCK_PROJECTS[Math.floor(Math.random() * MOCK_PROJECTS.length)];
-        logToConsole(`Discovered project: '<strong>${randomProject.name}</strong>'. Analyzing its code...`, "fetch");
-        await new Promise(res => setTimeout(res, 1000));
+        await new Promise(resolve => setTimeout(resolve, 500));
         
-        logToConsole("Sending current and new code to the Weaver AI...", "merge");
-        await new Promise(res => setTimeout(res, 500));
-        logToConsole("AI is weaving... this may take a moment.", "merge");
+        log("Selecting random project to merge...");
+        const randomProject = SAMPLE_PROJECTS[Math.floor(Math.random() * SAMPLE_PROJECTS.length)];
+        log(`🎯 Selected project: <strong>${randomProject.name}</strong>`);
+        
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        log("🧠 Sending to AI for intelligent merging...");
+        
+        const systemPrompt = `You are a creative web developer AI. Merge the new code into the current code creatively.
+Rules:
+- Combine elements in interesting ways
+- Avoid conflicts between scripts
+- Make the result visually cohesive
+- Keep it functional and interesting
 
-        const systemPrompt = `You are an expert web developer AI. Your task is to merge two codebases (HTML, CSS, JS).
-Combine the 'new code' into the 'current code' in a creative and functional way.
-The goal is to create a single, coherent, and visually interesting webpage.
-- You can add, remove, or modify elements.
-- You can rewrite styles to make them compatible.
-- You can adjust scripts to work together, avoiding conflicts.
-- Be creative! The result should be a surprising and functional mashup.
-
-Respond ONLY with a JSON object with 'html', 'css', and 'js' keys containing the new, merged code as strings.
-Do not include any other text, explanations, or markdown formatting.
-The JSON response should look like:
-{
-  "html": "...",
-  "css": "...",
-  "js": "..."
-}`;
+Respond with valid JSON: {"html": "...", "css": "...", "js": "..."}`;
 
         const userPrompt = `Current Code:
-HTML:
-\`\`\`html
-${currentCode.html}
-\`\`\`
-CSS:
-\`\`\`css
-${currentCode.css}
-\`\`\`
-JS:
-\`\`\`javascript
-${currentCode.js}
-\`\`\`
+HTML: ${currentCode.html}
+CSS: ${currentCode.css}
+JS: ${currentCode.js}
 
-New Code to merge (from project '${randomProject.name}'):
-HTML:
-\`\`\`html
-${randomProject.html}
-\`\`\`
-CSS:
-\`\`\`css
-${randomProject.css}
-\`\`\`
-JS:
-\`\`\`javascript
-${randomProject.js}
-\`\`\`
-`;
+New Code (${randomProject.name}):
+HTML: ${randomProject.html}
+CSS: ${randomProject.css}
+JS: ${randomProject.js}`;
 
         const completion = await websim.chat.completions.create({
             messages: [
@@ -228,72 +276,85 @@ ${randomProject.js}
             json: true,
         });
 
-        const resultText = completion.content.trim();
-        const result = JSON.parse(resultText);
+        log("🎨 AI merge completed, parsing result...");
+        
+        const result = JSON.parse(completion.content);
         
         if (!result.html || !result.css || !result.js) {
-            throw new Error("AI response was not in the expected format.");
+            throw new Error("AI response missing required fields");
         }
-
-        currentCode = {
-            html: result.html,
-            css: result.css,
-            js: result.js
-        };
-
-        renderCode(currentCode);
-        logToConsole("Merge complete! Rendering the new creation.", "merge");
-
-        await saveCurrentCode();
-
-    } catch (e) {
-        logToConsole(`An error occurred during the merge cycle: ${e.message}`, "error");
-        console.error("Merge Error:", e);
+        
+        currentCode = result;
+        
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        log("🖼️ Rendering merged creation...");
+        renderCode();
+        
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        log("💾 Saving to database...");
+        await saveToDatabase();
+        
+        log("✨ <strong>MERGE CYCLE COMPLETE!</strong>", 'success');
+        
+    } catch (error) {
+        log(`❌ Merge failed: ${error.message}`, 'error');
+        console.error('Merge error details:', error);
     } finally {
         isMerging = false;
-        triggerButton.disabled = false;
-        triggerButton.textContent = 'Trigger Merge Now';
-        spinner.classList.add('hidden');
+        updateUI('ready');
     }
 }
 
-async function init() {
+async function saveToDatabase() {
     try {
-        consoleEl.innerHTML = ''; // Clear initial HTML content
-        logToConsole("<strong>Step 1:</strong> Initializing UI with default state.", "welcome");
-        renderCode(currentCode);
+        const records = room.collection(COLLECTION_TYPE).getList();
         
-        triggerButton.disabled = false;
-        triggerButton.textContent = 'Trigger Merge Now';
-
-        await new Promise(res => setTimeout(res, 500));
-
-        logToConsole("<strong>Step 2:</strong> Connecting to Websim database...", "welcome");
-        room = new WebsimSocket();
+        if (records.length > 0) {
+            log("Updating existing database record...");
+            await room.collection(COLLECTION_TYPE).update(records[0].id, currentCode);
+        } else {
+            log("Creating new database record...");
+            await room.collection(COLLECTION_TYPE).create(currentCode);
+        }
         
-        const initTimeout = setTimeout(() => {
-            if (!initialDataLoaded) {
-                logToConsole("Warning: Connection to Websim is slow. A saved creation might take longer to appear.", "error");
-                logToConsole("You can still use 'Trigger Merge Now'.", "welcome");
-            }
-        }, 10000); // 10-second warning timeout
-
-        room.collection(COLLECTION_TYPE).subscribe((records) => {
-            clearTimeout(initTimeout);
-            handleStateUpdate(records);
-        });
-        logToConsole("... Subscribed to data. Waiting for response.", "welcome");
-
-        setInterval(runAiMerge, 45000);
-        triggerButton.addEventListener('click', runAiMerge);
-
+        log("✅ Database save successful", 'success');
     } catch (error) {
-        logToConsole(`A critical error occurred during initialization: ${error.message}`, "error");
-        console.error("Initialization error:", error);
-        triggerButton.textContent = "Error!";
-        triggerButton.disabled = true;
-        spinner.classList.add('hidden');
+        log(`❌ Database save failed: ${error.message}`, 'error');
+        throw error;
     }
 }
 
-init();
+async function initializeApp() {
+    updateUI('initializing');
+    
+    try {
+        log("🌟 <strong>AI WEAVER INITIALIZATION STARTED</strong>");
+        log("This AI merges code from random Websim projects into a living creation");
+        
+        await step1_InitializeUI();
+        
+        const records = await step2_ConnectDatabase();
+        
+        await step3_LoadExistingData(records);
+        
+        await step4_SetupEventListeners();
+        
+        log("🎉 <strong>INITIALIZATION COMPLETE!</strong>", 'success');
+        log("Click 'Trigger AI Merge' to start creating, or wait for automatic merges");
+        
+        isInitialized = true;
+        updateUI('ready');
+        
+    } catch (error) {
+        log(`💥 <strong>INITIALIZATION FAILED:</strong> ${error.message}`, 'error');
+        log("Please refresh the page to try again", 'error');
+        console.error('Full initialization error:', error);
+        updateUI('error');
+    }
+}
+
+// Start the app
+log("Starting AI Weaver application...");
+initializeApp();
