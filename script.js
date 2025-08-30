@@ -7,6 +7,7 @@ const spinner = document.getElementById('spinner');
 
 const COLLECTION_TYPE = 'ai_weaver_project_v2'; // Bumped version for new merge logic
 let room;
+let isInitialized = false;
 let currentCode = {
     html: '<!-- Welcome to the AI Weaver -->\n<div class="center"><h1>Waiting for first merge...</h1><p>The AI will begin its work shortly.</p></div>',
     css: 'body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #f0f0f0; } .center { text-align: center; color: #555; }',
@@ -79,7 +80,7 @@ const MOCK_PROJECTS = [
 
 function logToConsole(message, className = '') {
     const p = document.createElement('p');
-    p.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+    p.innerHTML = `[<span class="timestamp">${new Date().toLocaleTimeString()}</span>] ${message}`;
     p.className = `log-line ${className}`;
     consoleEl.appendChild(p);
     consoleEl.scrollTop = consoleEl.scrollHeight;
@@ -102,7 +103,7 @@ function renderCode(code) {
 }
 
 async function saveCurrentCode() {
-    logToConsole("Saving state to persistent storage...", "save");
+    logToConsole("Saving current creation to database...", "save");
     try {
         const records = room.collection(COLLECTION_TYPE).getList();
         if (records.length > 0) {
@@ -117,26 +118,31 @@ async function saveCurrentCode() {
     }
 }
 
-async function loadLatestCode() {
-    logToConsole("Attempting to load latest project state...");
-    return new Promise((resolve) => {
-        // Give the socket some time to connect and fetch initial data.
-        setTimeout(() => {
-            const records = room.collection(COLLECTION_TYPE).getList();
-            if (records && records.length > 0) {
-                const latestRecord = records[0];
-                currentCode = {
-                    html: latestRecord.html || currentCode.html,
-                    css: latestRecord.css || currentCode.css,
-                    js: latestRecord.js || currentCode.js
-                };
-                logToConsole("Successfully loaded saved state from database.");
-            } else {
-                logToConsole("No saved state found. Starting with initial template.");
-            }
-            resolve(true);
-        }, 1500); // Wait 1.5s for records to populate
-    });
+function handleStateUpdate(records) {
+    if (isInitialized) return; // Only run initialization once
+
+    logToConsole("Connection established. Checking for saved project...");
+
+    if (records && records.length > 0) {
+        const latestRecord = records[0];
+        currentCode = {
+            html: latestRecord.html || currentCode.html,
+            css: latestRecord.css || currentCode.css,
+            js: latestRecord.js || currentCode.js
+        };
+        logToConsole("Found a saved creation. Rendering now.", "welcome");
+    } else {
+        logToConsole("No saved creation found. Starting with a blank canvas.", "welcome");
+    }
+    
+    renderCode(currentCode);
+    
+    logToConsole("AI Weaver is ready.", "ready");
+    logToConsole("Click 'Trigger Merge Now' or wait for the automatic cycle.", "welcome");
+
+    isInitialized = true;
+    triggerButton.disabled = false;
+    triggerButton.textContent = 'Trigger Merge Now';
 }
 
 async function runAiMerge() {
@@ -148,13 +154,18 @@ async function runAiMerge() {
 
     try {
         logToConsole("AI cycle initiated...", "scan");
-        await new Promise(res => setTimeout(res, 1000));
-        
-        const randomProject = MOCK_PROJECTS[Math.floor(Math.random() * MOCK_PROJECTS.length)];
-        logToConsole(`Found random project: '${randomProject.name}'`, "scan");
+        await new Promise(res => setTimeout(res, 500));
+
+        logToConsole("Searching Websim for a project to merge...", "scan");
         await new Promise(res => setTimeout(res, 1500));
         
-        logToConsole("Engaging AI to merge code...", "merge");
+        const randomProject = MOCK_PROJECTS[Math.floor(Math.random() * MOCK_PROJECTS.length)];
+        logToConsole(`Discovered project: '<strong>${randomProject.name}</strong>'. Analyzing its code...`, "fetch");
+        await new Promise(res => setTimeout(res, 1000));
+        
+        logToConsole("Sending current and new code to the Weaver AI...", "merge");
+        await new Promise(res => setTimeout(res, 500));
+        logToConsole("AI is weaving... this may take a moment.", "merge");
 
         const systemPrompt = `You are an expert web developer AI. Your task is to merge two codebases (HTML, CSS, JS).
 Combine the 'new code' into the 'current code' in a creative and functional way.
@@ -210,8 +221,13 @@ ${randomProject.js}
             json: true,
         });
 
-        const result = JSON.parse(completion.content);
+        const resultText = completion.content.trim().replace(/^```json|```$/g, '');
+        const result = JSON.parse(resultText);
         
+        if (!result.html || !result.css || !result.js) {
+            throw new Error("AI response was not in the expected format.");
+        }
+
         currentCode = {
             html: result.html,
             css: result.css,
@@ -219,7 +235,7 @@ ${randomProject.js}
         };
 
         renderCode(currentCode);
-        logToConsole("AI merge complete. New version is live.", "merge");
+        logToConsole("Merge complete! Rendering the new creation.", "merge");
 
         await saveCurrentCode();
 
@@ -235,19 +251,17 @@ ${randomProject.js}
 }
 
 async function init() {
-    room = new WebsimSocket();
-    logToConsole("Websim socket connected.", "welcome");
+    consoleEl.innerHTML = ''; // Clear initial HTML content
+    logToConsole("Initializing AI Weaver instance...", "welcome");
+    logToConsole("Connecting to Websim...", "welcome");
 
-    await loadLatestCode();
+    room = new WebsimSocket();
     
-    renderCode(currentCode);
-    logToConsole("Initial render complete.", "welcome");
+    room.collection(COLLECTION_TYPE).subscribe(handleStateUpdate);
     
     // Start the AI's periodic execution
-    setInterval(runAiMerge, 30000); // every 30 seconds
+    setInterval(runAiMerge, 45000); // every 45 seconds
     triggerButton.addEventListener('click', runAiMerge);
-    
-    logToConsole("AI Weaver is active. Automatic merge in 30 seconds.", "welcome");
 }
 
 init();

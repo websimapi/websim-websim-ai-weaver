@@ -78,6 +78,7 @@ h2 {
     height: 300px;
     font-size: 0.85rem;
     border: 1px solid var(--border-color);
+    scroll-behavior: smooth;
 }
 
 .log-line {
@@ -91,6 +92,7 @@ h2 {
 .log-line.merge { color: var(--green); }
 .log-line.error { color: var(--red); }
 .log-line.save { color: var(--foreground-color); opacity: 0.8; }
+.log-line.ready { color: var(--green); font-weight: bold; }
 
 
 .button-container {
