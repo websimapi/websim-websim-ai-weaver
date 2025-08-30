@@ -25,11 +25,11 @@ async function fetchRandomProjects() {
     log("🔍 Fetching projects from Websim database...");
     
     try {
-        // Fetch from multiple sources to get variety
+        // Use websim.fetchApi for proper API access
         const endpoints = [
-            '/api/v1/sites/trending?limit=200',
-            '/api/v1/sites/recent?limit=200', 
-            '/api/v1/sites/popular?limit=200'
+            '/api/v1/sites?limit=500&sort=created_at',
+            '/api/v1/sites?limit=500&sort=updated_at', 
+            '/api/v1/sites?limit=500&sort=random'
         ];
         
         const allProjects = [];
@@ -37,16 +37,32 @@ async function fetchRandomProjects() {
         for (const endpoint of endpoints) {
             try {
                 log(`📡 Querying ${endpoint}...`);
-                const response = await fetch(endpoint);
                 
-                log(`📊 Response status: ${response.status} ${response.statusText}`);
+                const apiResponse = await window.websim.fetchApi({
+                    url: endpoint,
+                    options: {
+                        method: 'GET'
+                    }
+                });
                 
-                if (!response.ok) {
-                    log(`⚠️ ${endpoint} returned ${response.status}: ${response.statusText}`, 'warning');
+                log(`📊 API Response status: ${apiResponse.status} ${apiResponse.statusText}`);
+                
+                if (apiResponse.status !== 200) {
+                    log(`⚠️ ${endpoint} returned ${apiResponse.status}: ${apiResponse.statusText}`, 'warning');
                     continue;
                 }
                 
-                const responseText = await response.text();
+                // Read the response body
+                const reader = apiResponse.body.getReader();
+                const chunks = [];
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    chunks.push(value);
+                }
+                
+                const responseText = new TextDecoder().decode(new Uint8Array(chunks.reduce((acc, chunk) => [...acc, ...chunk], [])));
                 log(`📄 Raw response length: ${responseText.length} characters`);
                 
                 let data;
@@ -59,49 +75,36 @@ async function fetchRandomProjects() {
                     continue;
                 }
                 
+                // Extract projects from various possible response structures
                 const projects = data.sites || data.data || data.results || data.projects || [];
-                log(`📊 Found ${projects.length} projects from ${endpoint}`);
+                log(`📊 Found ${projects.length} real projects from ${endpoint}`);
                 
-                // Log first project structure if available
                 if (projects.length > 0) {
-                    log(`🔍 Sample project keys: ${JSON.stringify(Object.keys(projects[0]))}`);
+                    log(`🔍 Sample project structure: ${JSON.stringify(Object.keys(projects[0]))}`);
+                    allProjects.push(...projects);
                 }
                 
-                allProjects.push(...projects);
-                
-                await new Promise(resolve => setTimeout(resolve, 200)); // Rate limit
+                await new Promise(resolve => setTimeout(resolve, 300)); // Rate limit
             } catch (endpointError) {
                 log(`❌ Failed to fetch from ${endpoint}: ${endpointError.message}`, 'error');
                 console.error('Endpoint error details:', endpointError);
             }
         }
         
-        log(`🎯 Total projects collected: ${allProjects.length}`);
+        log(`🎯 Total real projects collected: ${allProjects.length}`);
         
         if (allProjects.length === 0) {
-            log("🔍 No projects found, trying alternative approach...");
-            
-            // Try a simpler approach - just create mock projects for testing
-            const mockProjects = [
-                { id: 'mock1', title: 'Interactive Dashboard', description: 'A modern dashboard interface', username: 'creator1' },
-                { id: 'mock2', title: 'Game Prototype', description: 'A simple web game', username: 'creator2' },
-                { id: 'mock3', title: 'Art Gallery', description: 'Digital art showcase', username: 'creator3' },
-                { id: 'mock4', title: 'Music Player', description: 'Web-based music player', username: 'creator4' },
-                { id: 'mock5', title: 'Chat Interface', description: 'Real-time chat application', username: 'creator5' }
-            ];
-            
-            log(`🧪 Using mock projects for testing: ${mockProjects.length} projects`);
-            allProjects.push(...mockProjects);
+            throw new Error("No real projects found from any API endpoint. Check API access or endpoint URLs.");
         }
         
-        if (allProjects.length === 0) {
-            throw new Error("No projects available (even mock projects failed)");
-        }
+        // Deep search - ensure we have a diverse set
+        const uniqueProjects = Array.from(new Map(allProjects.map(p => [p.id, p])).values());
+        log(`🔄 Deduplicated to ${uniqueProjects.length} unique projects`);
         
-        cachedProjects = allProjects;
+        cachedProjects = uniqueProjects;
         lastProjectFetchTime = Date.now();
         
-        return allProjects;
+        return uniqueProjects;
     } catch (error) {
         log(`❌ Project fetch failed: ${error.message}`, 'error');
         console.error('Full fetch error:', error);
@@ -128,24 +131,47 @@ async function fetchProjectCode(project) {
     log("📥 Downloading project source code...");
     
     try {
-        // Construct the project URL
-        const projectUrl = `https://websim.com/c/${project.id}`;
-        log(`🌐 Fetching code from: ${projectUrl}`);
+        log(`🌐 Fetching real code from project ID: ${project.id}`);
         
-        // For now, we'll use a simplified approach since we can't directly fetch cross-origin content
-        // We'll generate some sample code based on the project metadata
-        const projectCode = {
-            name: project.title || project.name || 'Untitled Project',
-            html: generateSampleHTML(project),
-            css: generateSampleCSS(project),
-            js: generateSampleJS(project)
-        };
+        // Try to fetch the actual project content
+        const projectResponse = await window.websim.fetchApi({
+            url: `/api/v1/sites/${project.id}`,
+            options: {
+                method: 'GET'
+            }
+        });
         
-        log("✅ Project code generated successfully", 'success');
-        return projectCode;
+        if (projectResponse.status === 200) {
+            const reader = projectResponse.body.getReader();
+            const chunks = [];
+            
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+            }
+            
+            const responseText = new TextDecoder().decode(new Uint8Array(chunks.reduce((acc, chunk) => [...acc, ...chunk], [])));
+            const projectData = JSON.parse(responseText);
+            
+            log(`✅ Retrieved real project data for: ${projectData.title || project.title}`, 'success');
+            
+            // Extract real code if available
+            const projectCode = {
+                name: projectData.title || project.title || 'Untitled Project',
+                html: projectData.html || generateSampleHTML(projectData),
+                css: projectData.css || generateSampleCSS(projectData),
+                js: projectData.js || generateSampleJS(projectData)
+            };
+            
+            return projectCode;
+        } else {
+            log(`⚠️ Could not fetch project content, status: ${projectResponse.status}`, 'warning');
+            throw new Error(`Failed to fetch project content: ${projectResponse.status}`);
+        }
         
     } catch (error) {
-        log(`❌ Failed to fetch project code: ${error.message}`, 'error');
+        log(`❌ Failed to fetch real project code: ${error.message}`, 'error');
         throw error;
     }
 }
